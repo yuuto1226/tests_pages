@@ -1,0 +1,39 @@
+name: Issueトリガーで電源制御
+on:
+  issues:
+    types: [opened]
+jobs:
+  control:
+    if: contains(github.event.issue.labels.*.name, 'control')
+    runs-on: [self-hosted, windows]
+    steps:
+      - name: パラメータ解析
+        shell: powershell
+        id: parse
+        run: |
+          # Issue本文に下記フォーマットを想定：
+          # action: wake|shutdown
+          # name: PC1
+          $body = '${{ github.event.issue.body }}'
+          ($body -match 'action:\s*(\w+)') | Out-Null; $act=$matches[1]
+          ($body -match 'name:\s*(\w+)')    | Out-Null; $nm =$matches[1]
+          "action=$act`nname=$nm" | Out-File -Encoding utf8 $env:GITHUB_OUTPUT
+      - name: Wake-on-LAN 実行
+        if: steps.parse.outputs.action == 'wake'
+        shell: powershell
+        run: |
+          function Send-WoL([string]$mac) {
+            $bytes = ($mac -split ':') | ForEach-Object { [Convert]::ToByte($_,16) }
+            $packet = ([byte[]](0xFF * 6)) + (,$bytes * 16)
+            $udp = New-Object System.Net.Sockets.UdpClient
+            $udp.EnableBroadcast = $true
+            $udp.Send($packet, $packet.Length, '255.255.255.255', 9) | Out-Null
+            $udp.Close()
+          }
+          # hosts.json を読むか、上と同じ配列を参照して MAC を取得してください
+          Send-WoL '${{ steps.parse.outputs.name }}'
+      - name: シャットダウン実行
+        if: steps.parse.outputs.action == 'shutdown'
+        shell: powershell
+        run: |
+          Stop-Computer -ComputerName ${{ steps.parse.outputs.name }} -Force
