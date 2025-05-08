@@ -1,0 +1,10 @@
+name: 定期ステータス更新
+on:
+  schedule:
+    - cron: '*/5 * * * *'    # 5分毎
+  workflow_dispatch:        # 手動トリガー可
+jobs:
+  update-status:
+    runs-on: [self-hosted, windows]
+    steps:
+      - uses: actions/checkout@v3
