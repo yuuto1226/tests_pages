@@ -1,0 +1,43 @@
+name: 手動ステータス更新
+on:
+  issues:
+    types: [opened]
+jobs:
+  update-status:
+    # ラベル `update_status` が付いた Issue のみ実行
+    if: contains(github.event.issue.labels.*.name, 'update_status')
+    runs-on: [self-hosted, windows]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: 状態チェック＆JSON出力
+        shell: powershell
+        run: |
+          $hosts = @(
+            @{ name='PC1'; ip='192.168.1.101'; mac='AA:BB:CC:DD:EE:FF' }
+            @{ name='PC2'; ip='192.168.1.102'; mac='11:22:33:44:55:66' }
+          )
+          $results = foreach ($h in $hosts) {
+            $alive = Test-Connection -Count 1 -Quiet -ComputerName $h.ip
+            [PSCustomObject]@{ name=$h.name; ip=$h.ip; mac=$h.mac; alive=$alive }
+          }
+          $results | ConvertTo-Json -Depth 2 | Out-File -Encoding utf8 docs/status.json
+
+      - name: コミット＆プッシュ
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/status.json
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "📡 manual update status.json"
+            git push
+          }
+
+      - name: Issue Close
+        uses: actions-ecosystem/action-close-issue@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          comment: 'ステータス更新が完了しました。'
