@@ -1,1 +1,29 @@
-brbbbbrrbbbr
+<!DOCTYPE html><meta charset="utf-8">
+<title>リモート電源管理</title>
+<style>body{font-family:sans-serif;}table{border-collapse:collapse;}td,th{padding:4px;border:1px solid #ccc;}</style>
+<h1>PC 電源状態</h1>
+<table><thead><tr><th>名前</th><th>IP</th><th>状態</th><th>操作</th></tr></thead>
+<tbody id="list"></tbody></table>
+<script>
+const owner="あなたのGitHubユーザー名", repo="リポジトリ名";
+async function load(){
+  const res=await fetch("status.json"); const data=await res.json();
+  const tb=document.getElementById("list"); tb.innerHTML="";
+  data.forEach(h=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${h.name}</td>
+      <td>${h.ip}</td>
+      <td>${h.alive?"🟢ON":"🔴OFF"}</td>
+      <td>
+        <a href="https://github.com/${owner}/${repo}/issues/new?
+          labels=control&
+          title=${h.alive?"shutdown_"+h.name:"wake_"+h.name}&
+          body=action:%20${h.alive?"shutdown":"wake"}%0Aname:%20${h.name}"
+          >${h.alive?"シャットダウン":"Wake"}</a>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
+load(); setInterval(load,30000);
+</script>
