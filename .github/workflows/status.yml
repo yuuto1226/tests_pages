@@ -24,7 +24,7 @@ jobs:
           $results | ConvertTo-Json -Depth 2 | Out-File -Encoding utf8 docs/status.json
 
       - name: コミット＆プッシュ
-        shell: pwsh
+        shell: powershell
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
