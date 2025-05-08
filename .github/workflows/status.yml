@@ -8,3 +8,20 @@ jobs:
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v3
+      - name: 状態チェック＆JSON出力
+        shell: powershell
+        run: |
+          $hosts = @(
+            @{ name='PC1'; ip='192.168.1.101'; mac='AA:BB:CC:DD:EE:FF' }
+            @{ name='PC2'; ip='192.168.1.102'; mac='11:22:33:44:55:66' }
+          )
+          $results = foreach ($h in $hosts) {
+            $alive = Test-Connection -Count 1 -Quiet -ComputerName $h.ip
+            [PSCustomObject]@{ name=$h.name; ip=$h.ip; mac=$h.mac; alive=$alive }
+          }
+          $results | ConvertTo-Json -Depth 2 | Out-File -Encoding utf8 docs/status.json
+      - name: status.json をコミット
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: '📡 update status.json'
+          file_pattern: docs/status.json
