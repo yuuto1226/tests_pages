@@ -20,9 +20,26 @@
       window.open(url, '_blank');
     };
 
-    // 以下は既存の自動更新処理
-    async function load() { /* 省略 */ }
-    load(); setInterval(load,30000);
+async function load(){
+  const res=await fetch("status.json"); const data=await res.json();
+  const tb=document.getElementById("list"); tb.innerHTML="";
+  data.forEach(h=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${h.name}</td>
+      <td>${h.ip}</td>
+      <td>${h.alive?"🟢ON":"🔴OFF"}</td>
+      <td>
+        <a href="https://github.com/${owner}/${repo}/issues/new?
+          labels=control&
+          title=${h.alive?"shutdown_"+h.name:"wake_"+h.name}&
+          body=action:%20${h.alive?"shutdown":"wake"}%0Aname:%20${h.name}"
+          >${h.alive?"シャットダウン":"Wake"}</a>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
+load(); setInterval(load,30000);
   </script>
 </body>
 </html>
