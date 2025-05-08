@@ -5,7 +5,7 @@
 <table><thead><tr><th>名前</th><th>IP</th><th>状態</th><th>操作</th></tr></thead>
 <tbody id="list"></tbody></table>
 <script>
-const owner="あなたのGitHubユーザー名", repo="リポジトリ名";
+const owner="yuuto1226", repo="tests_pages";
 async function load(){
   const res=await fetch("status.json"); const data=await res.json();
   const tb=document.getElementById("list"); tb.innerHTML="";
