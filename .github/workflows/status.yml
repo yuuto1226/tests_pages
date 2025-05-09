@@ -54,101 +54,163 @@ jobs:
             }
           }
           
+          # サブネット範囲を計算する関数
+          function Get-NetworkRange {
+            param(
+              [string]$IPAddress,
+              [int]$PrefixLength
+            )
+            
+            try {
+              # IP アドレスをバイト配列に変換
+              $ipBytes = [System.Net.IPAddress]::Parse($IPAddress).GetAddressBytes()
+              [Array]::Reverse($ipBytes)
+              $ipInt = [System.BitConverter]::ToUInt32($ipBytes, 0)
+              
+              # サブネットマスクを計算
+              $maskInt = ([UInt32]::MaxValue) -shl (32 - $PrefixLength)
+              
+              # ネットワークアドレスを計算
+              $networkInt = $ipInt -band $maskInt
+              
+              # ブロードキャストアドレスを計算
+              $broadcastInt = $networkInt -bor (-bnot $maskInt)
+              
+              # ネットワーク内の最初と最後のIPアドレスを取得
+              $startIpInt = $networkInt + 1
+              $endIpInt = $broadcastInt - 1
+              
+              # スタート IP をバイト配列に変換
+              $startIpBytes = [System.BitConverter]::GetBytes($startIpInt)
+              [Array]::Reverse($startIpBytes)
+              $startIp = [System.Net.IPAddress]::new($startIpBytes)
+              
+              # エンド IP をバイト配列に変換
+              $endIpBytes = [System.BitConverter]::GetBytes($endIpInt)
+              [Array]::Reverse($endIpBytes)
+              $endIp = [System.Net.IPAddress]::new($endIpBytes)
+              
+              return @{
+                StartIP = $startIp.IPAddressToString
+                EndIP = $endIp.IPAddressToString
+              }
+            }
+            catch {
+              Write-Host "IP 範囲計算中にエラー: $_"
+              # エラーが発生したら、代替の安全な範囲を返す
+              $ipParts = $IPAddress -split '\.'
+              return @{
+                StartIP = "$($ipParts[0]).$($ipParts[1]).$($ipParts[2]).1"
+                EndIP = "$($ipParts[0]).$($ipParts[1]).$($ipParts[2]).254"
+              }
+            }
+          }
+          
           $results = @()
           foreach ($interface in $interfaces) {
             $ip = $interface.IPAddress
             $prefixLength = $interface.PrefixLength
             
-            # サブネットマスクを計算
-            $mask = [ipaddress]([math]::Pow(2, $prefixLength) - 1 -shl (32 - $prefixLength))
-            
-            # ネットワークアドレスを計算
-            $network = [ipaddress]($ip -band $mask.IPAddressToString)
-            $networkStr = $network.IPAddressToString
-            
-            Write-Host "スキャン中のネットワーク: $networkStr/$prefixLength"
+            Write-Host "インターフェース: $($interface.InterfaceAlias), IP: $ip, サブネット: /$prefixLength"
             
             # ARP テーブルから既知のデバイスを取得
-            $arpResults = Get-NetNeighbor -AddressFamily IPv4 | Where-Object { $_.State -eq 'Reachable' -and $_.IPAddress -ne '127.0.0.1' }
+            $arpResults = Get-NetNeighbor -AddressFamily IPv4 | Where-Object { 
+              $_.State -eq 'Reachable' -and $_.IPAddress -ne '127.0.0.1' 
+            }
             
+            Write-Host "ARP エントリー数: $($arpResults.Count)"
             foreach ($device in $arpResults) {
               # まずはPingで応答確認
-              $alive = Test-Connection -Count 1 -Quiet -ComputerName $device.IPAddress
-              
-              if ($alive) {
-                # コンピューターかどうかをチェック
-                $isComputer = Test-IsComputer -IPAddress $device.IPAddress
+              try {
+                $alive = Test-Connection -Count 1 -Quiet -ComputerName $device.IPAddress -ErrorAction SilentlyContinue
                 
-                if ($isComputer) {
-                  # ホスト名解決を試みる
-                  try {
-                    $hostEntry = [System.Net.Dns]::GetHostEntry($device.IPAddress)
-                    $hostname = $hostEntry.HostName
-                  } catch {
-                    $hostname = "PC-$($device.IPAddress)"
-                  }
+                if ($alive) {
+                  # コンピューターかどうかをチェック
+                  $isComputer = Test-IsComputer -IPAddress $device.IPAddress
                   
-                  $results += [PSCustomObject]@{
-                    name = $hostname
-                    ip = $device.IPAddress
-                    mac = $device.LinkLayerAddress
-                    alive = $alive
-                    type = "computer"
+                  if ($isComputer) {
+                    # ホスト名解決を試みる
+                    try {
+                      $hostEntry = [System.Net.Dns]::GetHostEntry($device.IPAddress)
+                      $hostname = $hostEntry.HostName
+                    } catch {
+                      $hostname = "PC-$($device.IPAddress)"
+                    }
+                    
+                    $results += [PSCustomObject]@{
+                      name = $hostname
+                      ip = $device.IPAddress
+                      mac = $device.LinkLayerAddress
+                      alive = $alive
+                      type = "computer"
+                    }
+                    
+                    Write-Host "コンピューター検出: $hostname ($($device.IPAddress))"
                   }
                 }
+              } catch {
+                Write-Host "デバイス $($device.IPAddress) のチェック中にエラー: $_"
+                continue
               }
             }
-          }
-          
-          # 簡易スキャンで検出できなかったコンピューターも対象にする
-          $commonComputerIPs = @()
-          $startIP = 1
-          $endIP = 254
-          
-          foreach ($interface in $interfaces) {
-            $ipParts = $interface.IPAddress -split '\.'
-            if ($ipParts.Count -eq 4) {
-              $ipBase = "$($ipParts[0]).$($ipParts[1]).$($ipParts[2])."
-              for ($i = $startIP; $i -le $endIP; $i++) {
-                $testIP = "$ipBase$i"
-                # 既に検出したIPは飛ばす
-                if (-not ($results | Where-Object { $_.ip -eq $testIP })) {
-                  $commonComputerIPs += $testIP
-                }
-              }
+            
+            # サブネット範囲を取得
+            $range = Get-NetworkRange -IPAddress $ip -PrefixLength $prefixLength
+            
+            # IP範囲からランダムなIPを選択してスキャン
+            $startParts = $range.StartIP -split '\.'
+            $endParts = $range.EndIP -split '\.'
+            
+            # 簡易的な IP リストの生成（サンプリング - 全アドレスではなく一部だけ）
+            $ipList = @()
+            for ($i = [int]$startParts[3]; $i -le [int]$endParts[3]; $i += 5) {  # 5づつ増加させてサンプリング
+              $ipList += "$($startParts[0]).$($startParts[1]).$($startParts[2]).$i"
             }
-          }
-          
-          # サブネット内の一般的な範囲をチェック (一部だけ、パフォーマンスのため)
-          $sampleIPs = $commonComputerIPs | Get-Random -Count ([Math]::Min(20, $commonComputerIPs.Count))
-          
-          foreach ($ip in $sampleIPs) {
-            $alive = Test-Connection -Count 1 -Quiet -ComputerName $ip -TimeoutSeconds 1
-            if ($alive) {
-              $isComputer = Test-IsComputer -IPAddress $ip
+            
+            # サンプル数を制限
+            $samplesToCheck = $ipList | Get-Random -Count ([Math]::Min(10, $ipList.Count))
+            Write-Host "追加スキャン対象: $($samplesToCheck.Count) サンプル"
+            
+            foreach ($ip in $samplesToCheck) {
+              # 既に検出したIPは飛ばす
+              if ($results | Where-Object { $_.ip -eq $ip }) {
+                continue
+              }
               
-              if ($isComputer) {
-                try {
-                  $hostEntry = [System.Net.Dns]::GetHostEntry($ip)
-                  $hostname = $hostEntry.HostName
-                } catch {
-                  $hostname = "PC-$ip"
+              try {
+                $alive = Test-Connection -Count 1 -Quiet -ComputerName $ip -TimeoutSeconds 1 -ErrorAction SilentlyContinue
+                if ($alive) {
+                  $isComputer = Test-IsComputer -IPAddress $ip
+                  
+                  if ($isComputer) {
+                    try {
+                      $hostEntry = [System.Net.Dns]::GetHostEntry($ip)
+                      $hostname = $hostEntry.HostName
+                    } catch {
+                      $hostname = "PC-$ip"
+                    }
+                    
+                    # MACアドレスを取得
+                    $macAddress = "Unknown"
+                    $arpEntry = Get-NetNeighbor -IPAddress $ip -ErrorAction SilentlyContinue
+                    if ($arpEntry) {
+                      $macAddress = $arpEntry.LinkLayerAddress
+                    }
+                    
+                    $results += [PSCustomObject]@{
+                      name = $hostname
+                      ip = $ip
+                      mac = $macAddress
+                      alive = $true
+                      type = "computer"
+                    }
+                    
+                    Write-Host "追加コンピューター検出: $hostname ($ip)"
+                  }
                 }
-                
-                # MACアドレスを取得
-                $macAddress = "Unknown"
-                $arpEntry = Get-NetNeighbor -IPAddress $ip -ErrorAction SilentlyContinue
-                if ($arpEntry) {
-                  $macAddress = $arpEntry.LinkLayerAddress
-                }
-                
-                $results += [PSCustomObject]@{
-                  name = $hostname
-                  ip = $ip
-                  mac = $macAddress
-                  alive = $true
-                  type = "computer"
-                }
+              } catch {
+                Write-Host "サンプル IP $ip のチェック中にエラー: $_"
+                continue
               }
             }
           }
