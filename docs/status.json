@@ -1,7 +1,16 @@
-﻿{
-    "name":  "SUB-PC.local",
-    "ip":  "192.168.11.10",
-    "mac":  "B8-97-5A-EF-12-28",
-    "alive":  true,
-    "type":  "computer"
-}
+﻿[
+    {
+        "name":  "SUB-PC.local",
+        "ip":  "192.168.11.10",
+        "mac":  "B8-97-5A-EF-12-28",
+        "alive":  true,
+        "type":  "computer"
+    },
+    {
+        "name":  "nas.local",
+        "ip":  "192.168.11.7",
+        "mac":  "50-65-F3-30-FB-F0",
+        "alive":  true,
+        "type":  "computer"
+    }
+]
