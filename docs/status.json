@@ -1,16 +1,7 @@
-﻿[
-    {
-        "name":  "SUB-PC.local",
-        "ip":  "192.168.11.10",
-        "mac":  "B8-97-5A-EF-12-28",
-        "alive":  true,
-        "type":  "computer"
-    },
-    {
-        "name":  "LS-QLB1F.local",
-        "ip":  "192.168.11.9",
-        "mac":  "00-24-A5-00-3B-1F",
-        "alive":  true,
-        "type":  "computer"
-    }
-]
+﻿{
+    "name":  "SUB-PC.local",
+    "ip":  "192.168.11.10",
+    "mac":  "B8-97-5A-EF-12-28",
+    "alive":  true,
+    "type":  "computer"
+}
