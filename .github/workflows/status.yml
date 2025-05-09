@@ -15,17 +15,148 @@ jobs:
           fetch-depth: 0
           persist-credentials: true  # ← GitHub トークンを credentials に残す
 
-      - name: 状態チェック＆JSON出力
+      - name: コンピューター検出＆状態チェック＆JSON出力
         shell: powershell
         run: |
-          $hosts = @(
-            @{ name='PC1'; ip='192.168.1.101'; mac='AA:BB:CC:DD:EE:FF' }
-            @{ name='PC2'; ip='192.168.1.102'; mac='11:22:33:44:55:66' }
-          )
-          $results = foreach ($h in $hosts) {
-            $alive = Test-Connection -Count 1 -Quiet -ComputerName $h.ip
-            [PSCustomObject]@{ name=$h.name; ip=$h.ip; mac=$h.mac; alive=$alive }
+          # ローカルインターフェースとサブネット情報を取得
+          $interfaces = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'Loopback' -and $_.IPAddress -ne '127.0.0.1' }
+          
+          # コンピューターかどうかを判定する関数
+          function Test-IsComputer {
+            param([string]$IPAddress)
+            
+            # Windows共有ポート (445) が開いているかチェック
+            try {
+              $tcpClient = New-Object System.Net.Sockets.TcpClient
+              $connection = $tcpClient.BeginConnect($IPAddress, 445, $null, $null)
+              $wait = $connection.AsyncWaitHandle.WaitOne(100)
+              if ($wait) {
+                $tcpClient.EndConnect($connection)
+                $tcpClient.Close()
+                return $true
+              } else {
+                $tcpClient.Close()
+                
+                # 別のWinRMポート (5985) もチェック
+                $tcpClient = New-Object System.Net.Sockets.TcpClient
+                $connection = $tcpClient.BeginConnect($IPAddress, 5985, $null, $null)
+                $wait = $connection.AsyncWaitHandle.WaitOne(100)
+                if ($wait) {
+                  $tcpClient.EndConnect($connection)
+                  $tcpClient.Close()
+                  return $true
+                }
+                $tcpClient.Close()
+                return $false
+              }
+            } catch {
+              return $false
+            }
           }
+          
+          $results = @()
+          foreach ($interface in $interfaces) {
+            $ip = $interface.IPAddress
+            $prefixLength = $interface.PrefixLength
+            
+            # サブネットマスクを計算
+            $mask = [ipaddress]([math]::Pow(2, $prefixLength) - 1 -shl (32 - $prefixLength))
+            
+            # ネットワークアドレスを計算
+            $network = [ipaddress]($ip -band $mask.IPAddressToString)
+            $networkStr = $network.IPAddressToString
+            
+            Write-Host "スキャン中のネットワーク: $networkStr/$prefixLength"
+            
+            # ARP テーブルから既知のデバイスを取得
+            $arpResults = Get-NetNeighbor -AddressFamily IPv4 | Where-Object { $_.State -eq 'Reachable' -and $_.IPAddress -ne '127.0.0.1' }
+            
+            foreach ($device in $arpResults) {
+              # まずはPingで応答確認
+              $alive = Test-Connection -Count 1 -Quiet -ComputerName $device.IPAddress
+              
+              if ($alive) {
+                # コンピューターかどうかをチェック
+                $isComputer = Test-IsComputer -IPAddress $device.IPAddress
+                
+                if ($isComputer) {
+                  # ホスト名解決を試みる
+                  try {
+                    $hostEntry = [System.Net.Dns]::GetHostEntry($device.IPAddress)
+                    $hostname = $hostEntry.HostName
+                  } catch {
+                    $hostname = "PC-$($device.IPAddress)"
+                  }
+                  
+                  $results += [PSCustomObject]@{
+                    name = $hostname
+                    ip = $device.IPAddress
+                    mac = $device.LinkLayerAddress
+                    alive = $alive
+                    type = "computer"
+                  }
+                }
+              }
+            }
+          }
+          
+          # 簡易スキャンで検出できなかったコンピューターも対象にする
+          $commonComputerIPs = @()
+          $startIP = 1
+          $endIP = 254
+          
+          foreach ($interface in $interfaces) {
+            $ipParts = $interface.IPAddress -split '\.'
+            if ($ipParts.Count -eq 4) {
+              $ipBase = "$($ipParts[0]).$($ipParts[1]).$($ipParts[2])."
+              for ($i = $startIP; $i -le $endIP; $i++) {
+                $testIP = "$ipBase$i"
+                # 既に検出したIPは飛ばす
+                if (-not ($results | Where-Object { $_.ip -eq $testIP })) {
+                  $commonComputerIPs += $testIP
+                }
+              }
+            }
+          }
+          
+          # サブネット内の一般的な範囲をチェック (一部だけ、パフォーマンスのため)
+          $sampleIPs = $commonComputerIPs | Get-Random -Count ([Math]::Min(20, $commonComputerIPs.Count))
+          
+          foreach ($ip in $sampleIPs) {
+            $alive = Test-Connection -Count 1 -Quiet -ComputerName $ip -TimeoutSeconds 1
+            if ($alive) {
+              $isComputer = Test-IsComputer -IPAddress $ip
+              
+              if ($isComputer) {
+                try {
+                  $hostEntry = [System.Net.Dns]::GetHostEntry($ip)
+                  $hostname = $hostEntry.HostName
+                } catch {
+                  $hostname = "PC-$ip"
+                }
+                
+                # MACアドレスを取得
+                $macAddress = "Unknown"
+                $arpEntry = Get-NetNeighbor -IPAddress $ip -ErrorAction SilentlyContinue
+                if ($arpEntry) {
+                  $macAddress = $arpEntry.LinkLayerAddress
+                }
+                
+                $results += [PSCustomObject]@{
+                  name = $hostname
+                  ip = $ip
+                  mac = $macAddress
+                  alive = $true
+                  type = "computer"
+                }
+              }
+            }
+          }
+          
+          # 結果をソートして重複を削除
+          $results = $results | Sort-Object -Property ip -Unique
+          
+          Write-Host "検出されたコンピューター数: $($results.Count)"
           $results | ConvertTo-Json -Depth 2 | Out-File -Encoding utf8 docs/status.json
 
       - name: コミット＆プッシュ
@@ -36,7 +167,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/status.json
-
           if (-not (git diff --cached --quiet)) {
             git commit -m "📡 update status.json"
             # リモート URL をトークン付きに差し替え
