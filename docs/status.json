@@ -7,9 +7,9 @@
         "type":  "computer"
     },
     {
-        "name":  "nas.local",
-        "ip":  "192.168.11.7",
-        "mac":  "50-65-F3-30-FB-F0",
+        "name":  "LS-QLB1F.local",
+        "ip":  "192.168.11.9",
+        "mac":  "00-24-A5-00-3B-1F",
         "alive":  true,
         "type":  "computer"
     }
