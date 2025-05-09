@@ -14,6 +14,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true  # ← GitHub トークンを credentials に残す
+      - name: Set PowerShell Execution Policy
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
       - name: コンピューター検出＆状態チェック＆JSON出力
         shell: powershell
