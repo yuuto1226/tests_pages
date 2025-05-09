@@ -20,8 +20,6 @@ jobs:
         run: |
           Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
           Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-          steps:
-
       - name: コンピューター検出＆状態チェック＆JSON出力
         shell: powershell
         run: |
@@ -227,7 +225,6 @@ jobs:
           
           Write-Host "検出されたコンピューター数: $($results.Count)"
           $results | ConvertTo-Json -Depth 2 | Out-File -Encoding utf8 docs/status.json
-
       - name: コミット＆プッシュ
         shell: powershell
         env:
