@@ -19,6 +19,8 @@ jobs:
         shell: powershell
         run: |
           Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          steps:
 
       - name: コンピューター検出＆状態チェック＆JSON出力
         shell: powershell
