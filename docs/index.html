@@ -1,25 +1,11 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>PC 電源管理</title>
-  <style>/* 省略 */</style>
-</head>
-<body>
-  <h1>PC 電源状態</h1>
-  <button id="refresh-btn">🔄 更新</button>
-  <table>…</table>
-  <script>
-    const owner = 'yuuto1226';
-    const repo  = 'tests_pages';
-
-    document.getElementById('refresh-btn').onclick = () => {
-      const url = `https://github.com/${owner}/${repo}/issues/new`
-        + '?labels=update_status'
-        + '&title=manual_status_update';
-      window.open(url, '_blank');
-    };
-
+<!DOCTYPE html><meta charset="utf-8">
+<title>リモート電源管理</title>
+<style>body{font-family:sans-serif;}table{border-collapse:collapse;}td,th{padding:4px;border:1px solid #ccc;}</style>
+<h1>PC 電源状態</h1>
+<table><thead><tr><th>名前</th><th>IP</th><th>状態</th><th>操作</th></tr></thead>
+<tbody id="list"></tbody></table>
+<script>
+const owner="yuuto1226", repo="tests_pages";
 async function load(){
   const res=await fetch("status.json"); const data=await res.json();
   const tb=document.getElementById("list"); tb.innerHTML="";
@@ -40,6 +26,4 @@ async function load(){
   });
 }
 load(); setInterval(load,30000);
-  </script>
-</body>
-</html>
+</script>
