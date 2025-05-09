@@ -1,6 +1,6 @@
 name: 定期ステータス更新
 permissions:
-  contents: read
+  contents: write
   actions: write
 on:
   schedule:
